@@ -1,0 +1,3 @@
+[submodule "Blosc2-Btune"]
+	path = Blosc2-Btune
+	url = git@github.com:Victor-C-Zhang/Blosc2-Btune.git
