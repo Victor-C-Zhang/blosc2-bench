@@ -17,11 +17,15 @@ add_executable(create_era5 create_era5.cpp)
 target_link_libraries(create_era5 PRIVATE GDAL::GDAL)
 
 # Upstream blosc2-btune has a defective CMake build that requires a pre-install step
-execute_process (
-    COMMAND bash -c "${PROJECT_SOURCE_DIR}/Blosc2-Btune/prebuild.sh"
-    OUTPUT_VARIABLE outVar
-)
-message(STATUS outVar)
+if (NOT ${RAN_PREBUILD} STREQUAL "1")
+    message(STATUS "Running prebuild.sh")
+    execute_process (
+        COMMAND bash -c "${PROJECT_SOURCE_DIR}/Blosc2-Btune/prebuild.sh"
+        OUTPUT_VARIABLE outVar
+    )
+    set(RAN_PREBUILD "1" CACHE INTERNAL)
+    message(STATUS outVar)
+endif()
 
 add_subdirectory(Blosc2-Btune)
 
