@@ -1,7 +1,10 @@
 # blosc2-bench
 Data and environmental setup to run benchmarks against blosc2
 
-## Initial setup
+## Onetime setup
+!!! Note
+    This section included for posterity only. The processed files are provided in the repo already.
+
 First, install GDAL to parse the input files.
 ```
 sudo dnf install gdal-devel
@@ -34,3 +37,9 @@ Then, download blosc-btune
 ```
 pip install blosc2-btune
 ```
+
+Run the benchmarks by providing the dataset directory to run against. Example:
+```
+./roundtrip /path/to/REA6_precip/
+```
+This will write a CSV file named `stats.csv` to the dataset directory containing the test files.

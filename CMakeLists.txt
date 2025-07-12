@@ -29,5 +29,5 @@ endif()
 
 add_subdirectory(Blosc2-Btune)
 
-add_executable(roundtrip roundtrip.c)
+add_executable(roundtrip roundtrip.cpp)
 target_link_libraries(roundtrip PRIVATE blosc2 blosc2_btune m)
