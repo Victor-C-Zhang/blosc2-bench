@@ -9,7 +9,8 @@
 #include <blosc2/tuners-registry.h>
 #include <btune.h>
 
-static const double MiB = 1024. * 1024.;
+static constexpr double MiB = 1024. * 1024.;
+static constexpr int NUM_CHUNKS = 50; // give BTune a reasonable number of iterations to come online
 
 long get_file_size(FILE *file) {
   fseek(file, 0, SEEK_END);
@@ -35,7 +36,6 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
     return EXIT_FAILURE;
   }
   long file_size = get_file_size(in_file);
-  printf("File length: %ld bytes\n", file_size);
   char *buffer = (char *)malloc(
       file_size +
       1); // Allocate space for the file contents and a null terminator
@@ -56,7 +56,7 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
   // btune
   btune_config btune_config = BTUNE_CONFIG_DEFAULTS;
   // btune_config.perf_mode = BTUNE_PERF_DECOMP;
-  btune_config.tradeoff[0] = .5;
+  btune_config.tradeoff[0] = .9;
   btune_config.tradeoff_nelems = 1;
   /* For lossy mode it would be
   btune_config.tradeoff[0] = .5;
@@ -92,11 +92,10 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
   std::chrono::duration<double, std::milli> dtimeMs{};
 
   // Compress
-  const int numChunks =
-      50; // give BTune a reasonable number of iterations to come online
-  int chunkSize = file_size / numChunks;
-  int leftover = file_size - chunkSize * numChunks;
-  for (int i = 0; i < numChunks; i++) {
+  int chunkSize = file_size / NUM_CHUNKS;
+  chunkSize = chunkSize / 8 * 8; // round down to multiple of 8
+  int leftover = file_size - chunkSize * NUM_CHUNKS;
+  for (int i = 0; i < NUM_CHUNKS; i++) {
     auto start = std::chrono::high_resolution_clock::now();
     const int res = blosc2_schunk_append_buffer(
         schunk_out, buffer + chunkSize * i, chunkSize);
@@ -110,9 +109,9 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
   if (leftover > 0) {
     auto start = std::chrono::high_resolution_clock::now();
     const int res = blosc2_schunk_append_buffer(
-        schunk_out, buffer + chunkSize * numChunks, leftover);
+        schunk_out, buffer + chunkSize * NUM_CHUNKS, leftover);
     auto end = std::chrono::high_resolution_clock::now();
-    if (res != numChunks + 1) {
+    if (res != NUM_CHUNKS + 1) {
       fprintf(stderr, "Error in appending (leftover) data to destination file");
       return 1;
     }
@@ -122,13 +121,13 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
   // Decompress
   char *regen = (char *)malloc(file_size + 1);
   regen[file_size] = '\0';
-  for (int i = 0; i < numChunks; i++) {
+  for (int i = 0; i < NUM_CHUNKS; i++) {
     auto start = std::chrono::high_resolution_clock::now();
     int size = blosc2_schunk_decompress_chunk(schunk_out, i,
                                               regen + chunkSize * i, chunkSize);
     auto end = std::chrono::high_resolution_clock::now();
     if (size != chunkSize) {
-      fprintf(stderr, "Error in decompressing data");
+      std::cerr << "Error in decompressing data: [" << i << "] " << size << " != " << chunkSize << std::endl;
       return 1;
     }
     dtimeMs += end - start;
@@ -136,7 +135,7 @@ static int round_trip(const char *in_fname, std::ofstream &statsFile) {
   if (leftover > 0) {
     auto start = std::chrono::high_resolution_clock::now();
     int size = blosc2_schunk_decompress_chunk(
-        schunk_out, numChunks, regen + chunkSize * numChunks, leftover);
+        schunk_out, NUM_CHUNKS, regen + chunkSize * NUM_CHUNKS, leftover);
     auto end = std::chrono::high_resolution_clock::now();
     if (size != leftover) {
       fprintf(stderr, "Error in decompressing (leftover) data");
@@ -183,10 +182,10 @@ static int round_trip_dir(const char *in_dir) {
   for (const auto &entry : std::filesystem::directory_iterator(dirPath)) {
     if (entry.is_regular_file() && entry.path().filename() != "stats.txt") {
       const char *fname = entry.path().c_str();
-      printf("Processing file: %s\n", fname);
+      // printf("Processing file: %s\n", fname);
       int res = round_trip(fname, statsFile);
       if (res != 0) {
-        return res;
+        fprintf(stderr, "Error file: %s\n", fname);
       }
     }
   }
@@ -200,12 +199,14 @@ int main(int argc, char *argv[]) {
 
   // Input parameters
   if (argc != 2) {
-    fprintf(stderr, "btune_example <input dir>\n");
+    fprintf(stderr, "./roundtrip <input dir>\n");
     return 1;
   }
 
   const char *in_fname = argv[1];
   const int ret = round_trip_dir(in_fname);
+  // auto devnull = std::ofstream("/dev/null");
+  // const int ret = round_trip(in_fname, devnull);
 
   blosc2_destroy();
 
